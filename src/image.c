@@ -186,8 +186,7 @@ void draw_detections(image im, int num, float thresh, box *boxes, float **probs,
         float prob = probs[i][class];
         if(prob > thresh){
             //int width = pow(prob, 1./2.)*30+1;
-            int width = im.h * .012;
-            printf("%s: %.0f%%\n", names[class], prob*100);
+            int width = im.h * .012;            
             int offset = class*1 % classes;
             float red = get_color(2,offset,classes);
             float green = get_color(1,offset,classes);
@@ -206,6 +205,8 @@ void draw_detections(image im, int num, float thresh, box *boxes, float **probs,
             int top   = (b.y-b.h/2.)*im.h;
             int bot   = (b.y+b.h/2.)*im.h;
 
+            printf("'class':'%s', 'prob':%.2f, 'left':%d, 'top':%d, 'right':%d, 'bottom':%d \n", names[class], prob, left, top, right, bot);
+            
             if(left < 0) left = 0;
             if(right > im.w-1) right = im.w-1;
             if(top < 0) top = 0;
