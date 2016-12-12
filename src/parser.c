@@ -2,32 +2,32 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "blas.h"
-#include "parser.h"
-#include "assert.h"
-#include "activations.h"
-#include "crop_layer.h"
-#include "cost_layer.h"
-#include "convolutional_layer.h"
 #include "activation_layer.h"
-#include "normalization_layer.h"
-#include "batchnorm_layer.h"
-#include "connected_layer.h"
-#include "rnn_layer.h"
-#include "gru_layer.h"
-#include "crnn_layer.h"
-#include "maxpool_layer.h"
-#include "reorg_layer.h"
-#include "softmax_layer.h"
-#include "dropout_layer.h"
-#include "detection_layer.h"
-#include "region_layer.h"
+#include "activations.h"
+#include "assert.h"
 #include "avgpool_layer.h"
+#include "batchnorm_layer.h"
+#include "blas.h"
+#include "connected_layer.h"
+#include "convolutional_layer.h"
+#include "cost_layer.h"
+#include "crnn_layer.h"
+#include "crop_layer.h"
+#include "detection_layer.h"
+#include "dropout_layer.h"
+#include "gru_layer.h"
+#include "list.h"
 #include "local_layer.h"
+#include "maxpool_layer.h"
+#include "normalization_layer.h"
+#include "option_list.h"
+#include "parser.h"
+#include "region_layer.h"
+#include "reorg_layer.h"
+#include "rnn_layer.h"
 #include "route_layer.h"
 #include "shortcut_layer.h"
-#include "list.h"
-#include "option_list.h"
+#include "softmax_layer.h"
 #include "utils.h"
 
 typedef struct{
@@ -232,29 +232,11 @@ softmax_layer parse_softmax(list *options, size_params params)
     return layer;
 }
 
-int *read_map(char *filename)
-{
-    int n = 0;
-    int *map = 0;
-    char *str;
-    FILE *file = fopen(filename, "r");
-    if(!file) file_error(filename);
-    while((str=fgetl(file))){
-        ++n;
-        map = realloc(map, n*sizeof(int));
-        map[n-1] = atoi(str);
-    }
-    return map;
-}
-
 layer parse_region(list *options, size_params params)
 {
     int coords = option_find_int(options, "coords", 4);
     int classes = option_find_int(options, "classes", 20);
     int num = option_find_int(options, "num", 1);
-
-    params.w = option_find_int(options, "side", params.w);
-    params.h = option_find_int(options, "side", params.h);
 
     layer l = make_region_layer(params.batch, params.w, params.h, num, classes, coords);
     assert(l.outputs == params.inputs);
@@ -269,6 +251,8 @@ layer parse_region(list *options, size_params params)
 
     l.thresh = option_find_float(options, "thresh", .5);
     l.classfix = option_find_int_quiet(options, "classfix", 0);
+    l.absolute = option_find_int_quiet(options, "absolute", 0);
+    l.random = option_find_int_quiet(options, "random", 0);
 
     l.coord_scale = option_find_float(options, "coord_scale", 1);
     l.object_scale = option_find_float(options, "object_scale", 1);
@@ -623,9 +607,10 @@ network parse_network_cfg(char *filename)
     n = n->next;
     int count = 0;
     free_section(s);
+    fprintf(stderr, "layer     filters    size              input                output\n");
     while(n){
         params.index = count;
-        fprintf(stderr, "%d: ", count);
+        fprintf(stderr, "%5d ", count);
         s = (section *)n->val;
         options = s->options;
         layer l = {0};
@@ -981,23 +966,28 @@ void load_convolutional_weights(layer l, FILE *fp)
         //return;
     }
     int num = l.n*l.c*l.size*l.size;
-    if(0){
-        fread(l.biases + ((l.n != 1374)?0:5), sizeof(float), l.n, fp);
-        if (l.batch_normalize && (!l.dontloadscales)){
-            fread(l.scales + ((l.n != 1374)?0:5), sizeof(float), l.n, fp);
-            fread(l.rolling_mean + ((l.n != 1374)?0:5), sizeof(float), l.n, fp);
-            fread(l.rolling_variance + ((l.n != 1374)?0:5), sizeof(float), l.n, fp);
+    fread(l.biases, sizeof(float), l.n, fp);
+    if (l.batch_normalize && (!l.dontloadscales)){
+        fread(l.scales, sizeof(float), l.n, fp);
+        fread(l.rolling_mean, sizeof(float), l.n, fp);
+        fread(l.rolling_variance, sizeof(float), l.n, fp);
+        if(0){
+            int i;
+            for(i = 0; i < l.n; ++i){
+                printf("%g, ", l.rolling_mean[i]);
+            }
+            printf("\n");
+            for(i = 0; i < l.n; ++i){
+                printf("%g, ", l.rolling_variance[i]);
+            }
+            printf("\n");
         }
-        fread(l.weights + ((l.n != 1374)?0:5*l.c*l.size*l.size), sizeof(float), num, fp);
-    }else{
-        fread(l.biases, sizeof(float), l.n, fp);
-        if (l.batch_normalize && (!l.dontloadscales)){
-            fread(l.scales, sizeof(float), l.n, fp);
-            fread(l.rolling_mean, sizeof(float), l.n, fp);
-            fread(l.rolling_variance, sizeof(float), l.n, fp);
+        if(0){
+            fill_cpu(l.n, 0, l.rolling_mean, 1);
+            fill_cpu(l.n, 0, l.rolling_variance, 1);
         }
-        fread(l.weights, sizeof(float), num, fp);
     }
+    fread(l.weights, sizeof(float), num, fp);
     if(l.adam){
         fread(l.m, sizeof(float), num, fp);
         fread(l.v, sizeof(float), num, fp);
